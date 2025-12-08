@@ -1,0 +1,10 @@
+streamlit
+tensorflow
+numpy
+pillow
+langchain
+langchain-classic
+langchain-google-genai
+langchain-chroma
+chromadb
+gdown
