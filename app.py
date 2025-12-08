@@ -112,7 +112,7 @@ def load_rag_system():
     )
     
     # 3. Setup Otak (Pakai 1.5 Flash biar stabil)
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0)
+    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash-lite", temperature=0)
     
     # 4. Setup Chain
     retriever = vectorstore.as_retriever()
