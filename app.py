@@ -76,6 +76,63 @@ def load_image_model():
     # Load model setelah file tersedia
     return tf.keras.models.load_model(local_model_path)
 
+# --- FUNGSI BARU: BANGUN MODEL MANUAL (ANTI ERROR FLATTEN) ---
+def build_vgg_architecture():
+    # 1. Bangun Wadah VGG16 Kosong
+    base_model = tf.keras.applications.VGG16(
+        include_top=False,
+        weights=None, # Kita gak butuh download imagenet, kan nanti diisi dari file kamu
+        input_shape=(224, 224, 3)
+    )
+    base_model.trainable = False # Bekukan base model
+
+    # 2. Susun Layer (SAMA PERSIS DENGAN YANG SUKSES DI COLAB)
+    model = tf.keras.models.Sequential([
+        base_model,
+        tf.keras.layers.Flatten(),              # Ini yang tadi error, sekarang aman
+        tf.keras.layers.Dense(512, activation='relu'),
+        tf.keras.layers.Dropout(0.5),
+        tf.keras.layers.Dense(10, activation='softmax') # 10 Kelas Makanan
+    ])
+    return model
+
+@st.cache_resource
+def load_image_model():
+    # Nama file lokal
+    local_model_path = "Indonesian_Food_VGG16.keras"
+
+    # --- STEP 1: DOWNLOAD DARI GDRIVE (SAMA KAYAK TADI) ---
+    if not os.path.exists(local_model_path):
+        file_id = "1Odf--QVAO-q2REy0EdKiqxMU3ufRps4Y"  # ID Drive Kamu
+        url = f'https://drive.google.com/uc?id={file_id}'
+        
+        print(f"Sedang mendownload model ke {local_model_path}...")
+        try:
+            gdown.download(url, local_model_path, quiet=False)
+            print("✅ Download selesai!")
+        except Exception as e:
+            st.error(f"Gagal download model: {e}")
+            st.stop()
+
+    # --- STEP 2: LOAD MANUAL (JURUS SUNTIK) ---
+    try:
+        # A. Kita bangun dulu rumahnya
+        model = build_vgg_architecture()
+        
+        # B. Kita pancing dulu biar strukturnya kebentuk (Wajib!)
+        # Kasih makan gambar kosong sekali
+        model.predict(np.zeros((1, 224, 224, 3)), verbose=0)
+        
+        # C. Baru kita suntikkan isinya (Weights Only)
+        print("Menyuntikkan bobot ke model...")
+        model.load_weights(local_model_path)
+        
+        return model
+        
+    except Exception as e:
+        st.error(f"Error fatal saat loading model: {e}")
+        st.stop()
+
 @st.cache_resource
 def load_rag_system():
     # 1. Setup Embedding
