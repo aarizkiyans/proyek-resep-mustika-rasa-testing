@@ -121,6 +121,8 @@ def load_rag_system():
     Gunakan potongan konteks resep di bawah ini untuk menjawab pertanyaan pengguna.
     Jika pertanyaannya bukan soal resep, berikan output yang sesuai dengan isi buku mustika rasa. 
     Kalau pertanyaanya ada nama daerahnya misal rendang padang tapi gak ada spesifik rendang padang, cari aja resep makananan yang berhubungan dengan rendang atau padangnya
+    Kalau pertanyaanya bukan soal resep, kasih informasi yang berhubungan dengan buku mustika rasa. Bisa jadi daerah, bisa jadi bahan makanan yang dia punya, bisa jadi dia punya bahan tapi tidak tau cara memasaknya. 
+    Intinya jawab pertanyaan sesuai kata per kata yang user input, kalau benar benar tidak ada baru anda jawab tidak ada. 
 
     KONTEKS RESEP:
     {context}
