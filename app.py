@@ -97,7 +97,7 @@ def load_rag_system():
     vectorstore = Chroma(persist_directory="./chroma_db", embedding_function=embeddings)
     
     # 3. Setup Otak (PAKE 1.5 FLASH BIAR KUOTA AMAN)
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash-lite", temperature=0)
     
     # --- 4. MULTI-QUERY RETRIEVER (LOGIKA PINTAR) ---
     # Prompt khusus biar LLM mikirin variasi pertanyaan
@@ -181,7 +181,7 @@ def cari_resep_di_buku(nama_makanan):
 # ==========================================
 input_mode = st.radio(
     "Pilih cara pencarian:",
-    ("🖼️ Upload Foto", "✍️ Tulis Nama"),
+    ("🖼️ Upload Foto", "✍️ Tulis Nama atau Resep yang ingin anda ketahui"),
     horizontal=True
 )
 st.markdown("---")
@@ -221,4 +221,4 @@ elif input_mode == "✍️ Tulis Nama atau Resep yang ingin anda ketahui":
     if user_text_input:
         makanan_dicari = user_text_input.strip().title()
         if st.button(f"📖 Cari Resep '{makanan_dicari}'"):
-            cari_resep_di_buku(makanan_dicari)
+            cari_resep_di_buku(makanan_dicari) 
