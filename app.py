@@ -5,12 +5,16 @@ import numpy as np
 import os
 import gdown
 
-# Import LangChain
+# Import LangChain Standard
 from langchain_chroma import Chroma
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-from langchain_core.prompts import PromptTemplate
+from langchain_classic.prompts import PromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
+
+# --- TAMBAHAN PENTING (MultiQuery) ---
+from langchain_classic.retrievers.multi_query import MultiQueryRetriever
+import logging
 
 # ==========================================
 # 1. KONFIGURASI HALAMAN & API KEY
@@ -25,9 +29,8 @@ st.title("🥘 Detektif Resep Mustikarasa")
 st.write("Temukan resep legendaris dari foto atau nama makanannya langsung!")
 st.markdown("---")
 
-# --- SETUP API KEY (VERSI ANTI-GAGAL) ---
+# --- SETUP API KEY ---
 api_key = None
-
 try:
     if "GOOGLE_API_KEY" in st.secrets:
         api_key = st.secrets["GOOGLE_API_KEY"]
@@ -48,54 +51,39 @@ os.environ["GOOGLE_API_KEY"] = api_key
 # 2. SETUP MODEL & DATABASE (CACHE)
 # ==========================================
 
-# --- FUNGSI BANGUN MODEL MANUAL (SOLUSI ERROR FLATTEN) ---
+# --- FUNGSI BANGUN MODEL MANUAL (VGG16) ---
 def build_vgg_architecture():
-    # 1. Bangun Wadah VGG16 Kosong
     base_model = tf.keras.applications.VGG16(
-        include_top=False,
-        weights=None, 
-        input_shape=(224, 224, 3)
-    )
-    base_model.trainable = False 
-
-    # 2. Susun Layer
+        include_top=False, weights=None, input_shape=(224, 224, 3))
+    base_model.trainable = False
     model = tf.keras.models.Sequential([
         base_model,
         tf.keras.layers.Flatten(),
         tf.keras.layers.Dense(512, activation='relu'),
         tf.keras.layers.Dropout(0.5),
-        tf.keras.layers.Dense(10, activation='softmax') # 10 Kelas Makanan
+        tf.keras.layers.Dense(10, activation='softmax') 
     ])
     return model
 
 @st.cache_resource
 def load_image_model():
     local_model_path = "Indonesian_Food_VGG16.keras"
-
-    # --- STEP 1: DOWNLOAD DARI GDRIVE ---
     if not os.path.exists(local_model_path):
-        # ID Google Drive Kamu (JANGAN DIGANTI)
         file_id = "1Odf--QVAO-q2REy0EdKiqxMU3ufRps4Y" 
         url = f'https://drive.google.com/uc?id={file_id}'
-        
         print(f"Sedang mendownload model ke {local_model_path}...")
         try:
             gdown.download(url, local_model_path, quiet=False)
-            print("✅ Download selesai!")
         except Exception as e:
             st.error(f"Gagal download model: {e}")
             st.stop()
 
-    # --- STEP 2: LOAD MANUAL (JURUS SUNTIK) ---
     try:
         model = build_vgg_architecture()
-        # Pancing model biar strukturnya kebentuk
-        model.predict(np.zeros((1, 224, 224, 3)), verbose=0)
-        
+        model.predict(np.zeros((1, 224, 224, 3)), verbose=0) 
         print("Menyuntikkan bobot ke model...")
         model.load_weights(local_model_path)
         return model
-        
     except Exception as e:
         st.error(f"Error fatal saat loading model: {e}")
         st.stop()
@@ -106,17 +94,33 @@ def load_rag_system():
     embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
     
     # 2. Load Database
-    vectorstore = Chroma(
-        persist_directory="./chroma_db", 
-        embedding_function=embeddings
-    )
+    vectorstore = Chroma(persist_directory="./chroma_db", embedding_function=embeddings)
     
-    # 3. Setup Otak (Pakai 1.5 Flash biar stabil)
+    # 3. Setup Otak (PAKE 1.5 FLASH BIAR KUOTA AMAN)
     llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
     
-    # 4. Setup Chain
-    retriever = vectorstore.as_retriever()
+    # --- 4. MULTI-QUERY RETRIEVER (LOGIKA PINTAR) ---
+    # Prompt khusus biar LLM mikirin variasi pertanyaan
+    output_parser_prompt = PromptTemplate(
+        input_variables=["question"],
+        template="""Kamu adalah asisten chef AI. Tugasmu adalah membuat 3 variasi pertanyaan pencarian
+    berdasarkan pertanyaan user, agar kita bisa menemukan resep yang tepat di database buku resep Indonesia.
+    Dan kalau yang ditanyakan bukan soal resep, kasuh yang berhubungan dengan isi yang ada di buku mustika rasa ini.
+
+    Pertanyaan User: {question}
+
+    Keluarkan 3 variasi pertanyaan (satu per baris):
+        """
+    )
+
+    # Gabungkan Retrieval dengan Kecerdasan LLM
+    retriever_from_llm = MultiQueryRetriever.from_llm(
+        retriever=vectorstore.as_retriever(),
+        llm=llm,
+        prompt=output_parser_prompt
+    )
     
+    # --- 5. RAG CHAIN ---
     template = """Kamu adalah asisten ahli masakan Indonesia dari buku legendaris Mustikarasa.
     Gunakan potongan konteks resep di bawah ini untuk menjawab pertanyaan pengguna.
     Jika pertanyaannya bukan soal resep, berikan output yang sesuai dengan isi buku mustika rasa. 
@@ -141,93 +145,80 @@ def load_rag_system():
     prompt = PromptTemplate.from_template(template)
     
     chain = (
-        {"context": retriever, "question": RunnablePassthrough()}
+        {"context": retriever_from_llm, "question": RunnablePassthrough()}
         | prompt
         | llm
         | StrOutputParser()
     )
     return chain
 
-# Load sistem saat aplikasi dibuka
+# --- LOAD SISTEM ---
 with st.spinner("Sedang menyiapkan dapur AI..."):
     try:
         classifier_model = load_image_model()
         rag_chain = load_rag_system()
-        st.success("✅ Sistem Siap! Pilih metode input di bawah.")
+        st.success("✅ Sistem Siap!")
     except Exception as e:
-        st.error(f"❌ Terjadi kesalahan saat loading sistem: {e}")
+        st.error(f"❌ Error Loading: {e}")
         st.stop()
 
 # ==========================================
-# 3. FUNGSI PENCARI RESEP (LOGIKA RAG)
+# 3. FUNGSI PENCARI RESEP
 # ==========================================
 def cari_resep_di_buku(nama_makanan):
     st.markdown("---")
     st.subheader(f"📜 Hasil Pencarian: {nama_makanan}")
-    
-    with st.spinner(f"Membuka buku Mustikarasa mencari resep '{nama_makanan}'..."):
+    with st.spinner(f"Sedang mencari berbagai variasi resep '{nama_makanan}' di buku..."):
         try:
-            query = f"Berikan resep lengkap cara membuat {nama_makanan} beserta bahan-bahannya sesuai buku."
+            query = f"Bagaimana cara memasak {nama_makanan}? Sebutkan bahan dan langkahnya."
             hasil_resep = rag_chain.invoke(query)
             st.markdown(hasil_resep)
         except Exception as e:
-            st.error(f"Gagal mencari resep: {e}")
+            st.error(f"Gagal mencari resep (Kuota Habis/Error): {e}")
 
 # ==========================================
-# 4. INTERFACE UTAMA (MODE GAMBAR & TEKS)
+# 4. INTERFACE UTAMA
 # ==========================================
-
-# Pilihan Mode
 input_mode = st.radio(
-    "Pilih cara Anda ingin mencari resep:",
-    ("🖼️ Upload Foto Makanan", "✍️ Tulis Nama Makanan"),
+    "Pilih cara pencarian:",
+    ("🖼️ Upload Foto", "✍️ Tulis Nama"),
     horizontal=True
 )
 st.markdown("---")
 
-# --- MODE 1: GAMBAR ---
-if input_mode == "🖼️ Upload Foto Makanan":
-    st.info("Upload foto makanan (JPG/PNG), nanti AI akan menebaknya.")
-    uploaded_file = st.file_uploader("Pilih file gambar...", type=["jpg", "png", "jpeg"])
+# --- MODE GAMBAR ---
+if input_mode == "🖼️ Upload Foto":
+    uploaded_file = st.file_uploader("Upload foto makanan (JPG/PNG)", type=["jpg", "png", "jpeg"])
 
     if uploaded_file is not None:
-        # Tampilkan Gambar
         image = Image.open(uploaded_file).convert("RGB")
         st.image(image, caption='Foto yang diupload', width=300)
         
-        with st.spinner("🔍 Sedang menerawang jenis makanan..."):
-            # Preprocessing
+        with st.spinner("🔍 VGG16 sedang memprediksi..."):
             target_size = (224, 224)
             image_resized = ImageOps.fit(image, target_size, Image.Resampling.LANCZOS)
             img_array = np.asarray(image_resized) / 255.0
             img_batch = np.expand_dims(img_array, axis=0)
             
-            # Prediksi
             predictions = classifier_model.predict(img_batch)
             idx_max = np.argmax(predictions)
             confidence = np.max(predictions) * 100
             
-            # List Kelas
             CLASS_NAMES = ["bakso", "bebek_betutu", "gado_gado", "gudeg", "nasi_goreng", 
                            "pempek", "rawon", "rendang", "sate", "soto"] 
             
             predicted_label_raw = CLASS_NAMES[idx_max]
             display_label = predicted_label_raw.replace("_", " ").title()
             
-            st.success(f"🤖 AI yakin **{confidence:.1f}%** ini adalah: **{display_label}**")
+            st.info(f"🤖 AI memprediksi: **{display_label}** ({confidence:.1f}%)")
 
-            # Tombol Cari Resep
-            if st.button(f"📖 Cari Resep '{display_label}' di Buku"):
+            if st.button(f"📖 Cari Resep '{display_label}'"):
                 cari_resep_di_buku(display_label)
 
-# --- MODE 2: TEKS ---
-elif input_mode == "✍️ Tulis Nama Makanan":
-    st.info("Masukkan nama makanan, contoh: Nasi Goreng, Rendang, atau Sambal.")
-    
-    user_text_input = st.text_input("Nama Makanan:")
-
+# --- MODE TEKS ---
+elif input_mode == "✍️ Tulis Nama atau Resep yang ingin anda ketahui":
+    user_text_input = st.text_input("Masukkan nama makanan (Misal: Nasi Liwet):")
     if user_text_input:
         makanan_dicari = user_text_input.strip().title()
-        
         if st.button(f"📖 Cari Resep '{makanan_dicari}'"):
             cari_resep_di_buku(makanan_dicari)
