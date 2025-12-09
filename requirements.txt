@@ -9,3 +9,4 @@ langchain-chroma
 chromadb
 gdown
 langchain-community
+pysqlite3-binary ; sys_platform == 'linux'
