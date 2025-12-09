@@ -8,3 +8,4 @@ langchain-google-genai
 langchain-chroma
 chromadb
 gdown
+langchain-community
