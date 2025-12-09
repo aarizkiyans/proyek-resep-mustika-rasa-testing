@@ -117,7 +117,7 @@ def load_rag_system():
     vectorstore = Chroma(persist_directory=db_path, embedding_function=embeddings)
     
     # Model Gemini (Pakai 1.5 Flash biar stabil & hemat kuota)
-    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash-lite-001", temperature=0.5)
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash-lite", temperature=0.5)
     
     # MultiQuery
     output_parser_prompt = PromptTemplate(

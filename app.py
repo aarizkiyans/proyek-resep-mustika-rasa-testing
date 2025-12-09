@@ -97,7 +97,7 @@ def load_rag_system():
     vectorstore = Chroma(persist_directory="./chroma_db", embedding_function=embeddings)
     
     # 3. Setup Otak (PAKE 1.5 FLASH BIAR KUOTA AMAN)
-    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash-lite-001", temperature=0)
+    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash-lite", temperature=0)
     
     # --- 4. MULTI-QUERY RETRIEVER (LOGIKA PINTAR) ---
     # Prompt khusus biar LLM mikirin variasi pertanyaan
